@@ -34,7 +34,7 @@ jobs:
         run: |
           export SRC_DIR="${GITHUB_WORKSPACE}/my-code-${{ steps.gen_time.outputs.ts }}"
           export OUTPUT_DIR=${{ vars.OUTPUT_DIR }}/${{ steps.get_repo.outputs.repo_name }}/${{ github.ref_name }}
-          export LIB_DIR=${{ vars.OUTPUT_DIR }}
+          export LIB_DIR=${{ vars.OUTPUT_DIR }}/
           mkdir -p "${OUTPUT_DIR}"        
           mkdir -p "${SRC_DIR}/build"        
           docker run --rm \
@@ -43,9 +43,11 @@ jobs:
             -v "${LIB_DIR}:/custom_lib" \
             -w	/workspace \
             --entrypoint bash davidwu-base-gcc:1.0  -c "
+              cd cpp &&
+              mkdir -p build &&
               cd build &&
-              cmake -DCMAKE_CXX_FLAGS="-I/custom_lib" -DCMAKE_INSTALL_PREFIX=/output .. &&
-              cmake --build . -- -j50 &&
+              cmake -DARROW_FLATBUFFERS=ON -DFLATBUFFERS_HOME=/output -DCMAKE_CXX_FLAGS="-I/custom_lib" -DCMAKE_INSTALL_PREFIX=/output .. &&
+              cmake --build . -- -j70 &&
               cmake --install . &&
               chmod -R 777 /output/* &&
               echo "key,value" >> /output/system.csv &&
@@ -86,24 +88,6 @@ jobs:
           cat "$HASH_FILE"
           echo "✅ build info CSV generated at: ${BUILD_INFO_FILE}"
           cat "$BUILD_INFO_FILE"
-      - name: Trigger Repo B repository_dispatch event
-        uses: peter-evans/repository-dispatch@v2 # 使用一个现成的 action 来发送 dispatch 事件
-        with: 
-          token: ${{ secrets.REPO_B_DISPATCH_TOKEN }} 
-          # 指定目标仓库 (格式: owner/repo_name)
-          # 将 YOUR_REPO_B_OWNER 和 YOUR_REPO_B_NAME 替换为仓库 B 的实际所有者和仓库名
-          repository: Darrenzzy/arrow
-          # 定义一个事件类型，仓库 B 可以根据这个类型来过滤
-          event-type: triggered-by-repo-a-update
-          # (可选) 发送一个 payload，可以在仓库 B 的 workflow 中访问这些信息
-          # 例如，可以发送仓库 A 的 commit SHA 或分支信息
-          client-payload: |
-            {
-              "ref": "${{ github.ref }}",
-              "sha": "${{ github.sha }}",
-              "repo_name": "${{ steps.get_repo.outputs.repo_name }}",
-              "triggered_by_repo": "${{ github.repository }}"
-            }
       - name: Clean up work directory
         run: |
           export SRC_DIR="${GITHUB_WORKSPACE}/my-code-${{ steps.gen_time.outputs.ts }}"
