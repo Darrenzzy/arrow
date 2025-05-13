@@ -56,7 +56,7 @@ jobs:
               echo "key,value" > /output/csv/system.csv &&
               echo "os_version,$(source /etc/os-release && echo "${ID}:${VERSION_ID}")" >> /output/csv/system.csv &&
               echo "cmake_version,$(cmake --version | head -n1 | awk '{print $3}')" >> /output/csv/system.csv &&
-              echo "gcc_version,$(g++ -dumpfullversion)" >> /output/system.csv &&
+              echo "gcc_version,$(g++ -dumpfullversion)" >> /output/csv/system.csv &&
               echo done"
       - name: Get latest commit message
         id: get_commit_msg
