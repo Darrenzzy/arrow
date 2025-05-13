@@ -1,0 +1,111 @@
+name: Build C++ Project in Docker
+
+on:
+  push:
+    branches: [ master ]
+  pull_request:
+    branches: [ master ]
+
+  # 添加 repository_dispatch 事件作为触发器
+  repository_dispatch:
+    # (可选) 指定只响应特定的事件类型
+    types: [ triggered-by-repo-a-update ]   
+
+jobs:
+  build:
+    name: Build with Docker on Self-hosted Runner
+    runs-on: self-hosted
+    environment: dev
+
+    steps:
+      - name: Generate timestamp
+        id: gen_time
+        run: echo "ts=$(date +'%Y%m%d_%H%M%S')" >> "$GITHUB_OUTPUT"
+      - name: Checkout repository to dynamic path
+        uses: actions/checkout@v4
+        with:
+          path: my-code-${{ steps.gen_time.outputs.ts }}      
+      - name: Get repo name only
+        id: get_repo
+        run: |
+          REPO_NAME=$(basename "${{ github.repository }}")
+          echo "repo_name=$REPO_NAME" >> "$GITHUB_OUTPUT"
+      - name: Build inside Docker and output artifact
+        run: |
+          export SRC_DIR="${GITHUB_WORKSPACE}/my-code-${{ steps.gen_time.outputs.ts }}"
+          export OUTPUT_DIR=${{ vars.OUTPUT_DIR }}/${{ steps.get_repo.outputs.repo_name }}/${{ github.ref_name }}
+          export LIB_DIR=${{ vars.OUTPUT_DIR }}
+          mkdir -p "${OUTPUT_DIR}"        
+          mkdir -p "${SRC_DIR}/build"        
+          docker run --rm \
+            -v "${SRC_DIR}:/workspace" \
+            -v "${OUTPUT_DIR}:/output" \
+            -v "${LIB_DIR}:/custom_lib" \
+            -w	/workspace \
+            --entrypoint bash davidwu-base-gcc:1.0  -c "
+              cd build &&
+              cmake -DCMAKE_CXX_FLAGS="-I/custom_lib" -DCMAKE_INSTALL_PREFIX=/output .. &&
+              cmake --build . -- -j50 &&
+              cmake --install . &&
+              chmod -R 777 /output/* &&
+              echo "key,value" >> /output/system.csv &&
+              echo "os_version,$(source /etc/os-release && echo "${ID}:${VERSION_ID}")" >> /output/system.csv &&
+              echo "cmake_version,$(cmake --version | head -n1 | awk '{print $3}')" >> /output/system.csv &&
+              echo "gcc_version,$(g++ -dumpfullversion)" >> /output/system.csv &&
+              echo done"
+      - name: Get latest commit message
+        id: get_commit_msg
+        run: |
+          msg=$(git -C my-code-${{ steps.gen_time.outputs.ts }} log -1 --pretty=%B)
+          echo "message=$msg" >> "$GITHUB_OUTPUT" 
+      - name: Generate hash and build info CSV
+        run: |
+          export OUTPUT_DIR=${{ vars.OUTPUT_DIR }}/${{ steps.get_repo.outputs.repo_name }}/${{ github.ref_name }}
+          HASH_FILE="${OUTPUT_DIR}/hashes.csv"          
+          BUILD_INFO_FILE="${OUTPUT_DIR}/build_info.csv"
+          {
+            echo "key,value"
+            echo "repo_name,${{ github.repository }}"
+            echo "commit_msg,${{ steps.get_commit_msg.outputs.message }}"
+            echo "commit_tag,${{ github.ref }}"
+            echo "branch,${{ github.ref_name }}"
+            echo "commit_hash,${{ github.sha }}"
+            echo "actor,${{ github.actor }}"
+            echo "event_name,${{ github.event_name }}" 
+            echo "image_name,davidwu-base-gcc" 
+            echo "image_hash,a2e1c068baa8" 
+            echo "mount_path,${OUTPUT_DIR}"
+          } > "$BUILD_INFO_FILE"
+          echo "filename,sha256" > "$HASH_FILE"
+          find "${OUTPUT_DIR}" -type f -executable | while read file; do
+            hash=$(sha256sum "$file" | awk '{print $1}')
+            rel_path="${file#${OUTPUT_DIR}/}"
+            echo "${rel_path},${hash}" >> "$HASH_FILE"
+          done
+          echo "✅ Hash CSV generated at: ${HASH_FILE}"
+          cat "$HASH_FILE"
+          echo "✅ build info CSV generated at: ${BUILD_INFO_FILE}"
+          cat "$BUILD_INFO_FILE"
+      - name: Trigger Repo B repository_dispatch event
+        uses: peter-evans/repository-dispatch@v2 # 使用一个现成的 action 来发送 dispatch 事件
+        with: 
+          token: ${{ secrets.REPO_B_DISPATCH_TOKEN }} 
+          # 指定目标仓库 (格式: owner/repo_name)
+          # 将 YOUR_REPO_B_OWNER 和 YOUR_REPO_B_NAME 替换为仓库 B 的实际所有者和仓库名
+          repository: Darrenzzy/arrow
+          # 定义一个事件类型，仓库 B 可以根据这个类型来过滤
+          event-type: triggered-by-repo-a-update
+          # (可选) 发送一个 payload，可以在仓库 B 的 workflow 中访问这些信息
+          # 例如，可以发送仓库 A 的 commit SHA 或分支信息
+          client-payload: |
+            {
+              "ref": "${{ github.ref }}",
+              "sha": "${{ github.sha }}",
+              "repo_name": "${{ steps.get_repo.outputs.repo_name }}",
+              "triggered_by_repo": "${{ github.repository }}"
+            }
+      - name: Clean up work directory
+        run: |
+          export SRC_DIR="${GITHUB_WORKSPACE}/my-code-${{ steps.gen_time.outputs.ts }}"
+          echo "${SRC_DIR}/build"  # 清理工作目录
+          # rm -rf ${SRC_DIR}/build/*  # 清理工作目录
