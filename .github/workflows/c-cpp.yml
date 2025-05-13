@@ -34,7 +34,9 @@ jobs:
         run: |
           export SRC_DIR="${GITHUB_WORKSPACE}/my-code-${{ steps.gen_time.outputs.ts }}"
           export OUTPUT_DIR=${{ vars.OUTPUT_DIR }}/${{ steps.get_repo.outputs.repo_name }}/${{ github.ref_name }}
-          export LIB_DIR=${{ vars.OUTPUT_DIR }}/
+          export CLIENT_REPO_NAME="${{ github.event.client_payload.repo_name }}"
+          export CLIENT_REF="${{ github.event.client_payload.ref }}"
+          export LIB_DIR=${{ vars.OUTPUT_DIR }}/${CLIENT_REPO_NAME:flatbuffers}/${CLIENT_REF:master}"/
           mkdir -p "${OUTPUT_DIR}"        
           mkdir -p "${SRC_DIR}/build"        
           docker run --rm \
