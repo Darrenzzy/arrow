@@ -95,7 +95,7 @@ jobs:
             echo "mount_path,${OUTPUT_DIR}"
           } > "$BUILD_INFO_FILE"
           echo "filename,sha256" > "$HASH_FILE"
-          find "${OUTPUT_DIR}" -type f -executable | while read file; do
+          find "${OUTPUT_DIR}/lib" -type f -executable | while read file; do
             hash=$(sha256sum "$file" | awk '{print $1}')
             rel_path="${file#${OUTPUT_DIR}/}"
             echo "${rel_path},${hash}" >> "$HASH_FILE"
