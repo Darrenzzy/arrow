@@ -9,7 +9,7 @@ on:
   # 添加 repository_dispatch 事件作为触发器
   repository_dispatch:
     # (可选) 指定只响应特定的事件类型
-    types: [ triggered-by-repo-a-update,triggered-by-repo-a-update,triggered-by-repo-a-update,triggered-by-repo-a-update ]   
+    types: [ triggered-by-repo-a-update ]   
 
 jobs:
   build:
@@ -24,7 +24,7 @@ jobs:
           echo "ref: ${{ github.event.client_payload.ref }}"
           if [[ "${{ github.event.client_payload.ref }}" != "master" && -n "${{ github.event.client_payload.ref }}" ]]; then
             echo "Ref is not 'master' or empty. Exiting."
-            exit 1
+            exit 0
           fi
       - name: Generate timestamp
         id: gen_time
