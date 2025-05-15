@@ -24,7 +24,7 @@ jobs:
           echo "ref: ${{ github.event.client_payload.ref }}"
           if [[ "${{ github.event.client_payload.ref }}" != "master" && -n "${{ github.event.client_payload.ref }}" ]]; then
             echo "Ref is not 'master' or empty. Exiting."
-            exit 0
+            exit 1
           fi
       - name: Generate timestamp
         id: gen_time
