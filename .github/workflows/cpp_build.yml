@@ -4,18 +4,20 @@ on:
   push:
     branches: [ master ]
   pull_request:
-    branches: [ master ]
+    branches: [ master,dev ]
 
   # 添加 repository_dispatch 事件作为触发器
   repository_dispatch:
     # (可选) 指定只响应特定的事件类型
-    types: [ triggered-by-repo-a-update ]   
+    types: [ triggered-by-repo-a-update,triggered-by-repo-a-update,triggered-by-repo-a-update,triggered-by-repo-a-update ]   
 
 jobs:
   build:
     name: Build with Docker on Self-hosted Runner
     runs-on: self-hosted
     environment: dev
+
+
     steps:
       - name: check event ref is not master or empty
         run: |
@@ -43,6 +45,7 @@ jobs:
           echo "hash=$(git -C my-code-${{ steps.gen_time.outputs.ts }} rev-parse HEAD)" >> $GITHUB_OUTPUT
           echo "message=$(git -C my-code-${{ steps.gen_time.outputs.ts }} log -1 --pretty=%B)" >> $GITHUB_OUTPUT
           echo "tag=$(git -C my-code-${{ steps.gen_time.outputs.ts }} describe --tags --abbrev=0 --exact-match 2>/dev/null || echo 'no-tag')" >> $GITHUB_OUTPUT
+          echo "TIMESTAMP=$(date +%s)" >> $GITHUB_ENV
       - name: Build inside Docker and output artifact
         run: |
           export SRC_DIR="${GITHUB_WORKSPACE}/my-code-${{ steps.gen_time.outputs.ts }}"
@@ -73,11 +76,6 @@ jobs:
               echo "cmake_version,$(cmake --version | head -n1 | awk '{print $3}')" >> /output/csv/system.csv &&
               echo "gcc_version,$(g++ -dumpfullversion)" >> /output/csv/system.csv &&
               echo done"
-      - name: Get latest commit message
-        id: get_commit_msg
-        run: |
-          msg=$(git -C my-code-${{ steps.gen_time.outputs.ts }} log -1 --pretty=%B)
-          echo "message=$msg" >> "$GITHUB_OUTPUT" 
       - name: Generate hash and build info CSV
         run: |
           export OUTPUT_DIR=${{ vars.OUTPUT_DIR }}/${{ steps.get_commit_info.outputs.repo_name }}/${{ steps.set_branch.outputs.branch_name }}
@@ -85,6 +83,7 @@ jobs:
           BUILD_INFO_FILE="${OUTPUT_DIR}/csv/build_info.csv"
           {
             echo "key,value"
+            echo "build_id,${{ steps.get_commit_info.outputs.repo_name }}_${{ steps.set_branch.outputs.branch_name }}_${{ env.TIMESTAMP }}"
             echo "repo_name,${{ steps.get_commit_info.outputs.repo_name }}"
             echo "repo,${{ github.repository }}"
             echo "commit_msg,${{ steps.get_commit_info.outputs.message }}"
