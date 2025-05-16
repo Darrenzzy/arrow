@@ -102,6 +102,7 @@ jobs:
           DEPEND_REPO_FILE="${OUTPUT_DIR}/csv/depen_repo.csv"
           {
             echo "key,value"
+            echo "flatbuffers,master"
           } > "$DEPEND_REPO_FILE"
           echo "✅ Hash CSV generated at: ${HASH_FILE}"
           cat "$HASH_FILE"
