@@ -91,7 +91,7 @@ jobs:
             echo "event_name,${{ github.event_name }}" 
             echo "image_name,davidwu-base-gcc" 
             echo "image_hash,a2e1c068baa8" 
-            echo "output_path,${OUTPUT_DIR}"
+            echo "output_path,${{ vars.OUTPUT_DIR }}"
           } > "$BUILD_INFO_FILE"
           echo "filename,sha256" > "$HASH_FILE"
           find "${OUTPUT_DIR}/lib" -type f -executable | while read file; do
