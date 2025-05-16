@@ -1,0 +1,135 @@
+# .github/workflows/build-reusable.yml
+name: Reusable C++ Build Workflow
+
+on:
+  workflow_call:
+    inputs:
+      branch:
+        required: true
+        type: string
+      ref:
+        required: true
+        type: string
+    secrets:
+      REPO_B_DISPATCH_TOKEN:
+        required: true
+
+
+jobs:
+  build:
+    name: Build C++ on branch ${{ inputs.branch }}
+    runs-on: self-hosted
+    environment: dev
+    steps:
+ 
+      - name: Generate timestamp
+        id: gen_time
+        run: |
+          echo "ts=$(date +'%Y%m%d_%H%M%S')" >> "$GITHUB_OUTPUT"
+          echo "build_time=$(date +'%F %T')" >> "$GITHUB_OUTPUT"
+          echo "TIMESTAMP=$(date +%s)" >> $GITHUB_ENV
+          
+      - name: Checkout repository to dynamic path
+        uses: actions/checkout@v4
+        with:
+          ref:  ${{ inputs.ref }}
+          path: build-${{ steps.gen_time.outputs.ts }}      
+      - name: Get commit info from checked out branch
+        id: get_commit_info
+        run: |
+          REPO_NAME=$(basename "${{ github.repository }}")
+          echo "repo_name=$REPO_NAME" >> "$GITHUB_OUTPUT"
+          echo "hash=$(git -C build-${{ steps.gen_time.outputs.ts }} rev-parse HEAD)" >> $GITHUB_OUTPUT
+          echo "message=$(git -C build-${{ steps.gen_time.outputs.ts }} log -1 --pretty=%B)" >> $GITHUB_OUTPUT
+          echo "tag=$(git -C build-${{ steps.gen_time.outputs.ts }} describe --tags --abbrev=0 --exact-match 2>/dev/null || echo 'no-tag')" >> $GITHUB_OUTPUT
+          echo "time=$(git -C build-${{ steps.gen_time.outputs.ts }} log -1 --pretty=format:'%cI')" >> $GITHUB_OUTPUT
+ 
+      - name: Build inside Docker and output artifact
+        run: |
+          export SRC_DIR="${GITHUB_WORKSPACE}/build-${{ steps.gen_time.outputs.ts }}"
+          export OUTPUT_DIR=${{ vars.OUTPUT_DIR }}/${{ steps.get_commit_info.outputs.repo_name }}/${{ inputs.branch }}
+          mkdir -p ${OUTPUT_DIR}/csv
+          export LIB_DIR=${{ vars.OUTPUT_DIR }}
+          mkdir -p "${SRC_DIR}/build"        
+          docker run --rm \
+            -v "${SRC_DIR}:/workspace" \
+            -v "${OUTPUT_DIR}:/output" \
+            -v "${LIB_DIR}:/custom_lib" \
+            -w	/workspace \
+            --entrypoint bash davidwu-base-gcc:1.0  -c "
+              cd cpp &&
+              mkdir -p build &&
+              cd build &&
+              cmake -DCMAKE_CXX_FLAGS="-I/custom_lib" -DCMAKE_INSTALL_PREFIX=/output .. &&
+              cmake --build . -- -j50 &&
+              cmake --install . &&
+              chmod -R 777 /output/* &&
+              echo "key,value" > /output/csv/system.csv &&
+              echo "os_version,$(source /etc/os-release && echo "${ID}:${VERSION_ID}")" >> /output/csv/system.csv &&
+              echo "cmake_version,$(cmake --version | head -n1 | awk '{print $3}')" >> /output/csv/system.csv &&
+              echo "gcc_version,$(g++ -dumpfullversion)" >> /output/csv/system.csv &&
+              echo done"
+ 
+      - name: Generate hash and build info CSV
+        run: |
+          export OUTPUT_DIR=${{ vars.OUTPUT_DIR }}/${{ steps.get_commit_info.outputs.repo_name }}/${{ inputs.branch }}
+          HASH_FILE="${OUTPUT_DIR}/csv/hashes.csv"          
+          BUILD_ID=$(echo -n "${{ steps.get_commit_info.outputs.repo_name }}_${{ inputs.branch }}" | cksum | awk '{print $1}')
+          BUILD_INFO_FILE="${OUTPUT_DIR}/csv/build_info.csv"
+          {
+            echo "key,value"
+            echo "build_id,${{ env.TIMESTAMP }}${BUILD_ID}"
+            echo "build_time,${{ steps.gen_time.outputs.build_time }}"
+            echo "repo_name,${{ steps.get_commit_info.outputs.repo_name }}"
+            echo "repo,${{ github.repository }}"
+            echo "commit_msg,${{ steps.get_commit_info.outputs.message }}"
+            echo "commit_tag,${{ steps.get_commit_info.outputs.tag }}"
+            echo "branch,${{ inputs.branch }}"
+            echo "commit_hash,${{ steps.get_commit_info.outputs.hash }}"      
+            echo "commit_time,${{ steps.get_commit_info.outputs.time }}"
+            echo "actor,${{ github.actor }}"
+            echo "event_name,${{ github.event_name }}" 
+            echo "image_name,davidwu-base-gcc" 
+            echo "image_hash,a2e1c068baa8" 
+            echo "output_path,${OUTPUT_DIR}"
+          } > "$BUILD_INFO_FILE"
+          echo "filename,sha256" > "$HASH_FILE"
+          find "${OUTPUT_DIR}/bin" -type f -executable | while read file; do
+            hash=$(sha256sum "$file" | awk '{print $1}')
+            rel_path="${file#${OUTPUT_DIR}/}"
+            echo "${rel_path},${hash}" >> "$HASH_FILE"
+          done
+          DEPEND_REPO_FILE="${OUTPUT_DIR}/csv/depen_repo.csv"
+          {
+            echo "key,value"
+          } > "$DEPEND_REPO_FILE"
+          echo "✅ Hash CSV generated at: ${HASH_FILE}"
+          cat "$HASH_FILE"
+          echo "✅ build info CSV generated at: ${BUILD_INFO_FILE}"
+          cat "$BUILD_INFO_FILE"
+
+      - name: Trigger Repo B repository_dispatch event
+        uses: peter-evans/repository-dispatch@v2 # 使用一个现成的 action 来发送 dispatch 事件
+        with: 
+          token: ${{ secrets.REPO_B_DISPATCH_TOKEN }} 
+          # 指定目标仓库 (格式: owner/repo_name)
+          # 将 YOUR_REPO_B_OWNER 和 YOUR_REPO_B_NAME 替换为仓库 B 的实际所有者和仓库名
+          repository: Darrenzzy/arrow
+          # 定义一个事件类型，仓库 B 可以根据这个类型来过滤
+          event-type: triggered-by-repo-a-update
+          # (可选) 发送一个 payload，可以在仓库 B 的 workflow 中访问这些信息
+          # 例如，可以发送仓库 A 的 commit SHA 或分支信息
+          client-payload: |
+            {
+              "ref": "${{ inputs.branch }}",
+              "full_ref": "${{ inputs.ref }}",
+              "sha": "${{ github.sha }}",
+              "repo_name": "${{ steps.get_commit_info.outputs.repo_name }}",
+              "triggered_by_repo": "${{ github.repository }}"
+            }
+      - name: Clean up work directory
+        run: |
+          export SRC_DIR="${GITHUB_WORKSPACE}/build-${{ steps.gen_time.outputs.ts }}"
+          echo "${SRC_DIR}/build"  # 清理工作目录
+          # rm -rf ${SRC_DIR}/build/*  # 清理工作目录
+ 

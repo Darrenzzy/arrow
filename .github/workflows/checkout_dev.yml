@@ -1,0 +1,17 @@
+# .github/workflows/dispatch-master.yml
+
+name: Dispatch Dev CI
+
+on:
+  push:
+    branches: [ dev ]
+  pull_request:
+    branches: [ dev ]
+jobs:
+  build-dev:
+    uses: ./.github/workflows/build-reusable.yml
+    with:
+      branch: dev
+      ref: refs/heads/dev
+    secrets:
+      REPO_B_DISPATCH_TOKEN: ${{ secrets.REPO_B_DISPATCH_TOKEN }}
