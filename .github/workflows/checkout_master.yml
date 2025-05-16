@@ -10,6 +10,16 @@ on:
   repository_dispatch:
     types: [ triggered-by-repo-a-update ]
 jobs:
+  check-ref:
+    runs-on: ubuntu-latest
+    steps:
+      - name: check event ref is not master or empty
+        run: |
+          echo "ref: ${{ github.event.client_payload.ref }}"
+          if [[ "${{ github.event.client_payload.ref }}" != "master" && -n "${{ github.event.client_payload.ref }}" ]]; then
+            echo "Ref is not 'master' or empty. Exiting."
+            exit 1
+          fi
   build-master:
     uses: ./.github/workflows/build-reusable.yml
     with:
