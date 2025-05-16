@@ -21,6 +21,7 @@ jobs:
             exit 1
           fi
   build-master:
+    needs: check-ref   # 添加这行，表示依赖 check-ref
     uses: ./.github/workflows/build-reusable.yml
     with:
       branch: master
